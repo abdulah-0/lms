@@ -47,6 +47,20 @@ export default function Users() {
   };
 
   const handleSubmit = async () => {
+    // Validation
+    if (!form.name || !form.email || (!editUser && !form.password) || !form.role) {
+      enqueueSnackbar('Name, Email, Password and Role are required', { variant: 'warning' });
+      return;
+    }
+    if (form.role === 'Student' && !form.rollNo) {
+      enqueueSnackbar('Roll No is required for Student', { variant: 'warning' });
+      return;
+    }
+    if (form.role === 'Teacher' && !form.department) {
+      enqueueSnackbar('Department is required for Teacher', { variant: 'warning' });
+      return;
+    }
+
     try {
       if (editUser) {
         await updateUser(editUser._id, form);
@@ -182,4 +196,4 @@ export default function Users() {
       </Dialog>
     </Box>
   );
-} 
+}
