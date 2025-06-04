@@ -1,49 +1,63 @@
-import React, { useState } from 'react';
+// src/pages/Marks.jsx
+import React, { useEffect, useState } from 'react';
 import {
-  Box,
-  Typography,
-  Button,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions
+  Box, Typography, Button, Stack, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, Paper, TextField, Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
+import { supabase } from '../supabaseClient';
+import { useAuth } from '../components/AuthContext';
 
 function Marks() {
+  const { user } = useAuth();
   const [marksData, setMarksData] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
-  const [newEntry, setNewEntry] = useState({
-    name: '',
-    rollNo: '',
-    subject: '',
-    testNo: '',
-    marks: '',
-    totalMarks: '',
-  });
   const [searchQuery, setSearchQuery] = useState('');
   const { enqueueSnackbar } = useSnackbar();
 
+  const [newEntry, setNewEntry] = useState({
+    user_id: '',
+    subject: '',
+    test_no: '',
+    marks: '',
+    total_marks: '',
+  });
+
+  const [students, setStudents] = useState([]);
+
+  useEffect(() => {
+    fetchMarks();
+    if (user.role === 'Admin' || user.role === 'SuperAdmin' || user.role === 'Teacher') {
+      fetchStudents();
+    }
+  }, []);
+
+  const fetchMarks = async () => {
+    const { data, error } = await supabase
+      .from('marks')
+      .select('*, user_id (name, roll_no)')
+      .order('test_no');
+
+    if (error) {
+      enqueueSnackbar('Failed to fetch marks', { variant: 'error' });
+    } else {
+      setMarksData(data);
+    }
+  };
+
+  const fetchStudents = async () => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, roll_no')
+      .eq('role', 'Student');
+
+    if (!error) setStudents(data);
+  };
+
   const handleDialogOpen = () => {
     setEditingEntry(null);
-    setNewEntry({
-      name: '',
-      rollNo: '',
-      subject: '',
-      testNo: '',
-      marks: '',
-      totalMarks: '',
-    });
+    setNewEntry({ user_id: '', subject: '', test_no: '', marks: '', total_marks: '' });
     setOpenDialog(true);
   };
 
@@ -52,72 +66,80 @@ function Marks() {
     setEditingEntry(null);
   };
 
-  const handleSaveEntry = () => {
-    if (!newEntry.name || !newEntry.rollNo || !newEntry.subject || !newEntry.testNo || !newEntry.marks || !newEntry.totalMarks) {
+  const handleSaveEntry = async () => {
+    const { user_id, subject, test_no, marks, total_marks } = newEntry;
+    if (!user_id || !subject || !test_no || !marks || !total_marks) {
       enqueueSnackbar('Please fill all fields', { variant: 'warning' });
       return;
     }
 
-    if (editingEntry) {
-      const updatedData = marksData.map((entry) =>
-        entry.id === editingEntry.id ? { ...newEntry, id: editingEntry.id } : entry
-      );
-      setMarksData(updatedData);
-      enqueueSnackbar('Marks updated successfully', { variant: 'success' });
-    } else {
-      setMarksData([...marksData, { ...newEntry, id: Date.now() }]);
-      enqueueSnackbar('New marks added successfully', { variant: 'success' });
+    try {
+      if (editingEntry) {
+        const { error } = await supabase
+          .from('marks')
+          .update(newEntry)
+          .eq('id', editingEntry.id);
+
+        if (error) throw error;
+        enqueueSnackbar('Marks updated successfully', { variant: 'success' });
+      } else {
+        const { error } = await supabase
+          .from('marks')
+          .insert([newEntry]);
+
+        if (error) throw error;
+        enqueueSnackbar('New marks added successfully', { variant: 'success' });
+      }
+      fetchMarks();
+      handleDialogClose();
+    } catch (err) {
+      enqueueSnackbar('Error saving marks', { variant: 'error' });
     }
-    setOpenDialog(false);
-    setEditingEntry(null);
   };
 
   const handleEditEntry = (entry) => {
     setEditingEntry(entry);
-    setNewEntry(entry);
+    setNewEntry({
+      user_id: entry.user_id.id,
+      subject: entry.subject,
+      test_no: entry.test_no,
+      marks: entry.marks,
+      total_marks: entry.total_marks,
+    });
     setOpenDialog(true);
   };
 
-  const handleDeleteEntry = (id) => {
-    setMarksData(marksData.filter((entry) => entry.id !== id));
-    enqueueSnackbar('Marks deleted successfully', { variant: 'success' });
+  const handleDeleteEntry = async (id) => {
+    const { error } = await supabase.from('marks').delete().eq('id', id);
+    if (error) {
+      enqueueSnackbar('Error deleting entry', { variant: 'error' });
+    } else {
+      enqueueSnackbar('Marks deleted successfully', { variant: 'success' });
+      fetchMarks();
+    }
   };
 
-  const handleSaveMarks = () => {
-    console.log('Saved Marks:', marksData);
-    enqueueSnackbar('All marks saved successfully!', { variant: 'success' });
-  };
-
-  // Filter Marks Data Based on Search Query
   const filteredMarksData = marksData.filter((entry) => {
     const query = searchQuery.toLowerCase();
     return (
-      entry.name.toLowerCase().includes(query) ||
-      entry.rollNo.toLowerCase().includes(query) ||
+      entry.user_id?.name?.toLowerCase().includes(query) ||
+      entry.user_id?.roll_no?.toLowerCase().includes(query) ||
       entry.subject.toLowerCase().includes(query) ||
-      entry.testNo.toString().includes(query)
+      entry.test_no.toString().includes(query)
     );
   });
 
   return (
-    <Box
-      sx={{
-        backgroundColor: '#121212',
-        minHeight: '100vh',
-        padding: { xs: 2, sm: 4 },
-      }}
-    >
-      {/* Header */}
+    <Box sx={{ backgroundColor: '#121212', minHeight: '100vh', padding: { xs: 2, sm: 4 } }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" color="primary">
-          Marks
-        </Typography>
-        <Button variant="contained" color="primary" onClick={handleDialogOpen}>
-          Add New Marks
-        </Button>
+        <Typography variant="h4" color="primary">Marks</Typography>
+        {(user.role === 'Admin' || user.role === 'SuperAdmin' || user.role === 'Teacher') && (
+          <Button variant="contained" color="primary" onClick={handleDialogOpen}>
+            Add New Marks
+          </Button>
+        )}
       </Stack>
 
-      {/* Search Bar */}
       <TextField
         label="Search..."
         variant="outlined"
@@ -127,18 +149,8 @@ function Marks() {
         sx={{ mb: 4, backgroundColor: '#fff', borderRadius: 1 }}
       />
 
-      {/* Marks Table */}
-      <TableContainer
-        component={Paper}
-        sx={{
-          borderRadius: 2,
-          boxShadow: 3,
-          width: '100%',
-          overflowX: 'auto',
-          backgroundColor: '#fff',
-        }}
-      >
-        <Table sx={{ minWidth: 1100 }}>
+      <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 3 }}>
+        <Table>
           <TableHead>
             <TableRow>
               <TableCell><strong>Student Name</strong></TableCell>
@@ -148,72 +160,59 @@ function Marks() {
               <TableCell><strong>Marks</strong></TableCell>
               <TableCell><strong>Total Marks</strong></TableCell>
               <TableCell><strong>Percentage</strong></TableCell>
-              <TableCell><strong>Actions</strong></TableCell>
+              {(user.role === 'Admin' || user.role === 'SuperAdmin' || user.role === 'Teacher') && (
+                <TableCell><strong>Actions</strong></TableCell>
+              )}
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredMarksData.map((entry) => {
-              const percentage = ((Number(entry.marks) / Number(entry.totalMarks)) * 100).toFixed(1);
+              const percentage = ((Number(entry.marks) / Number(entry.total_marks)) * 100).toFixed(1);
               return (
                 <TableRow key={entry.id}>
-                  <TableCell>{entry.name}</TableCell>
-                  <TableCell>{entry.rollNo}</TableCell>
+                  <TableCell>{entry.user_id?.name || '-'}</TableCell>
+                  <TableCell>{entry.user_id?.roll_no || '-'}</TableCell>
                   <TableCell>{entry.subject}</TableCell>
-                  <TableCell>{entry.testNo}</TableCell>
+                  <TableCell>{entry.test_no}</TableCell>
                   <TableCell>{entry.marks}</TableCell>
-                  <TableCell>{entry.totalMarks}</TableCell>
+                  <TableCell>{entry.total_marks}</TableCell>
                   <TableCell>{isNaN(percentage) ? '-' : `${percentage}%`}</TableCell>
-                  <TableCell>
-                    <Stack direction="row" spacing={1}>
-                      <Button
-                        variant="outlined"
-                        color="primary"
-                        size="small"
-                        onClick={() => handleEditEntry(entry)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="outlined"
-                        color="error"
-                        size="small"
-                        onClick={() => handleDeleteEntry(entry.id)}
-                      >
-                        Delete
-                      </Button>
-                    </Stack>
-                  </TableCell>
+                  {(user.role === 'Admin' || user.role === 'SuperAdmin' || user.role === 'Teacher') && (
+                    <TableCell>
+                      <Stack direction="row" spacing={1}>
+                        <Button size="small" onClick={() => handleEditEntry(entry)}>Edit</Button>
+                        <Button size="small" color="error" onClick={() => handleDeleteEntry(entry.id)}>Delete</Button>
+                      </Stack>
+                    </TableCell>
+                  )}
                 </TableRow>
               );
             })}
+            {filteredMarksData.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={8} align="center">No data found.</TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </TableContainer>
 
-      {/* Save Button */}
-      <Stack direction="row" justifyContent="flex-end" mt={4}>
-        <Button variant="contained" color="success" onClick={handleSaveMarks}>
-          Save Marks
-        </Button>
-      </Stack>
-
-      {/* Add/Edit Marks Dialog */}
+      {/* Add/Edit Dialog */}
       <Dialog open={openDialog} onClose={handleDialogClose}>
         <DialogTitle>{editingEntry ? 'Edit Marks' : 'Add New Marks'}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} mt={1}>
             <TextField
-              label="Student Name"
-              value={newEntry.name}
-              onChange={(e) => setNewEntry({ ...newEntry, name: e.target.value })}
+              select
+              label="Student"
+              value={newEntry.user_id}
+              onChange={(e) => setNewEntry({ ...newEntry, user_id: e.target.value })}
               fullWidth
-            />
-            <TextField
-              label="Roll Number"
-              value={newEntry.rollNo}
-              onChange={(e) => setNewEntry({ ...newEntry, rollNo: e.target.value })}
-              fullWidth
-            />
+            >
+              {students.map((s) => (
+                <MenuItem key={s.id} value={s.id}>{s.name} ({s.roll_no})</MenuItem>
+              ))}
+            </TextField>
             <TextField
               label="Subject"
               value={newEntry.subject}
@@ -222,8 +221,8 @@ function Marks() {
             />
             <TextField
               label="Test Number"
-              value={newEntry.testNo}
-              onChange={(e) => setNewEntry({ ...newEntry, testNo: e.target.value })}
+              value={newEntry.test_no}
+              onChange={(e) => setNewEntry({ ...newEntry, test_no: e.target.value })}
               fullWidth
             />
             <TextField
@@ -236,8 +235,8 @@ function Marks() {
             <TextField
               label="Total Marks"
               type="number"
-              value={newEntry.totalMarks}
-              onChange={(e) => setNewEntry({ ...newEntry, totalMarks: e.target.value })}
+              value={newEntry.total_marks}
+              onChange={(e) => setNewEntry({ ...newEntry, total_marks: e.target.value })}
               fullWidth
             />
           </Stack>
@@ -249,7 +248,6 @@ function Marks() {
           </Button>
         </DialogActions>
       </Dialog>
-
     </Box>
   );
 }

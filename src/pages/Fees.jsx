@@ -1,9 +1,11 @@
+// src/pages/Fees.jsx
 import React, { useEffect, useState } from 'react';
 import {
-  Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Button, Chip, CircularProgress
+  Box, Typography, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, Paper, Button, Chip, CircularProgress
 } from '@mui/material';
 import { Download as DownloadIcon } from '@mui/icons-material';
-import { getStudentFees, downloadChallan } from '../api';
+import { supabase } from '../supabaseClient';
 import { useAuth } from '../components/AuthContext';
 import { useSnackbar } from 'notistack';
 
@@ -16,30 +18,46 @@ export default function Fees() {
   useEffect(() => {
     async function fetchFees() {
       setLoading(true);
-      try {
-        const res = await getStudentFees(user._id);
-        setFees(res.data);
-      } catch (err) {
+      const { data, error } = await supabase
+        .from('fees')
+        .select('*')
+        .eq('student_id', user.id)
+        .order('due_date', { ascending: true });
+
+      if (error) {
         enqueueSnackbar('Failed to fetch fees', { variant: 'error' });
-      } finally {
-        setLoading(false);
+      } else {
+        setFees(data);
       }
+      setLoading(false);
     }
+
     fetchFees();
   }, [user, enqueueSnackbar]);
 
-  const handleDownload = async (feeId) => {
+  const handleDownload = async (fee) => {
     try {
-      const res = await downloadChallan(feeId);
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const filePath = fee.challan_url?.split('/').slice(-1)[0];
+
+      const { data, error } = await supabase
+        .storage
+        .from('materials')
+        .download(filePath);
+
+      if (error) {
+        enqueueSnackbar('Download failed', { variant: 'error' });
+        return;
+      }
+
+      const blobUrl = window.URL.createObjectURL(data);
       const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'challan.pdf');
+      link.href = blobUrl;
+      link.setAttribute('download', `${fee.title || 'challan'}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();
-    } catch (err) {
-      enqueueSnackbar('Failed to download challan', { variant: 'error' });
+    } catch {
+      enqueueSnackbar('Download failed', { variant: 'error' });
     }
   };
 
@@ -56,8 +74,8 @@ export default function Fees() {
       <Typography variant="h4" color="primary" mb={3}>
         My Fees
       </Typography>
-      <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 3, width: '100%', overflowX: 'auto', backgroundColor: '#fff' }}>
-        <Table sx={{ minWidth: 700 }}>
+      <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 3 }}>
+        <Table>
           <TableHead>
             <TableRow>
               <TableCell><strong>Amount</strong></TableCell>
@@ -68,18 +86,21 @@ export default function Fees() {
           </TableHead>
           <TableBody>
             {fees.map((fee) => (
-              <TableRow key={fee._id}>
+              <TableRow key={fee.id}>
                 <TableCell>{fee.amount}</TableCell>
-                <TableCell>{fee.dueDate ? fee.dueDate.slice(0, 10) : '-'}</TableCell>
+                <TableCell>{fee.due_date?.slice(0, 10)}</TableCell>
                 <TableCell>
-                  <Chip label={fee.status} color={fee.status === 'Paid' ? 'success' : 'warning'} />
+                  <Chip
+                    label={fee.status}
+                    color={fee.status === 'Paid' ? 'success' : 'warning'}
+                  />
                 </TableCell>
                 <TableCell>
-                  {fee.challanUrl ? (
+                  {fee.challan_url ? (
                     <Button
                       variant="outlined"
                       startIcon={<DownloadIcon />}
-                      onClick={() => handleDownload(fee._id)}
+                      onClick={() => handleDownload(fee)}
                     >
                       Download
                     </Button>
@@ -101,4 +122,4 @@ export default function Fees() {
       </TableContainer>
     </Box>
   );
-} 
+}

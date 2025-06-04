@@ -1,8 +1,9 @@
+// src/pages/Login.jsx
 import React, { useState } from 'react';
 import { Box, Typography, TextField, Button, Stack, Paper } from '@mui/material';
 import { useNavigate, Link } from 'react-router-dom';
 import { useSnackbar } from 'notistack';
-import { loginUser } from '../api';
+import { supabase } from '../supabaseClient';
 import { useAuth } from '../components/AuthContext';
 
 function Login() {
@@ -15,28 +16,30 @@ function Login() {
 
   const handleLogin = async () => {
     setLoading(true);
-    try {
-      const res = await loginUser(email, password);
-      login(res.data.user, res.data.token);
-      enqueueSnackbar('Login successful!', { variant: 'success' });
-      // Redirect by role
-      if (res.data.user.role === 'Admin') {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      enqueueSnackbar(error.message, { variant: 'error' });
+    } else {
+      // Fetch user profile from 'users' table
+      const { data: profile, error: profileError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      if (profileError) {
+        enqueueSnackbar('User record not found', { variant: 'error' });
+      } else if (!profile.approved) {
+        enqueueSnackbar('Your account is awaiting approval.', { variant: 'warning' });
+      } else {
+        login(profile, data.session.access_token);
+        enqueueSnackbar('Login successful!', { variant: 'success' });
         navigate('/dashboard');
-      } else {
-        navigate('/dashboard'); // You can customize for student/teacher
       }
-    } catch (err) {
-      if (err.response?.status === 403) {
-        enqueueSnackbar('Your account is awaiting approval by the superadmin.', { variant: 'warning' });
-      } else {
-        enqueueSnackbar(
-          err.response?.data?.message || 'Invalid email or password',
-          { variant: 'error' }
-        );
-      }
-    } finally {
-      setLoading(false);
     }
+
+    setLoading(false);
   };
 
   return (

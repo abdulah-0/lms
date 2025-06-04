@@ -1,39 +1,15 @@
 // src/pages/Attendance.jsx
 import React, { useState, useEffect } from 'react';
 import {
-  Box,
-  Typography,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Chip,
-  Button,
-  Stack,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  MenuItem,
-  IconButton,
-  InputLabel,
-  Select,
-  FormControl
+  Box, Typography, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, Paper, Chip, Button, Stack, Dialog,
+  DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
+  IconButton, InputLabel, Select, FormControl
 } from '@mui/material';
 import { Delete as DeleteIcon, Edit as EditIcon, Add as AddIcon } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
-import {
-  getAttendance,
-  addAttendance,
-  updateAttendance,
-  deleteAttendance,
-  getUsers
-} from '../api';
 import { useAuth } from '../components/AuthContext';
+import { supabase } from '../supabaseClient';
 
 const statusOptions = ['Present', 'Absent'];
 const userTypeOptions = ['Student', 'Teacher'];
@@ -45,108 +21,103 @@ function Attendance() {
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [editRecord, setEditRecord] = useState(null);
-  const [form, setForm] = useState({ userId: '', userType: 'Student', date: '', status: 'Present' });
+  const [form, setForm] = useState({ user_id: '', user_type: 'Student', date: '', status: 'Present' });
   const [filter, setFilter] = useState({ userType: '', userId: '', date: '' });
   const { enqueueSnackbar } = useSnackbar();
 
-  // Fetch attendance and users
   useEffect(() => {
-    fetchData();
-    if (user.role === 'Admin') fetchUsers();
-    // eslint-disable-next-line
+    fetchAttendance();
+    if (user.role === 'Admin' || user.role === 'SuperAdmin') fetchUsers();
   }, []);
 
-  const fetchData = async () => {
+  const fetchAttendance = async () => {
     setLoading(true);
-    try {
-      const { data } = await getAttendance();
-      setAttendanceData(data);
-    } catch (err) {
+    const { data, error } = await supabase
+      .from('attendance')
+      .select('*, user_id (name, role)')
+      .order('date', { ascending: false });
+
+    if (error) {
       enqueueSnackbar('Error fetching attendance', { variant: 'error' });
-    } finally {
-      setLoading(false);
+    } else {
+      setAttendanceData(data);
     }
+    setLoading(false);
   };
 
   const fetchUsers = async () => {
-    try {
-      const { data } = await getUsers();
-      setUsers(data);
-    } catch (err) {
+    const { data, error } = await supabase.from('users').select('id, name, role');
+    if (error) {
       enqueueSnackbar('Error fetching users', { variant: 'error' });
+    } else {
+      setUsers(data);
     }
   };
 
-  // Filtered data for admin
-  const filteredData = attendanceData.filter((rec) => {
-    if (user.role !== 'Admin') return rec.userId?._id === user._id;
-    if (filter.userType && rec.userType !== filter.userType) return false;
-    if (filter.userId && rec.userId?._id !== filter.userId) return false;
-    if (filter.date && rec.date.slice(0, 10) !== filter.date) return false;
-    return true;
-  });
-
-  // Open dialog for add/edit
   const handleOpenDialog = (record = null) => {
     setEditRecord(record);
     if (record) {
       setForm({
-        userId: record.userId?._id || '',
-        userType: record.userType,
-        date: record.date ? record.date.slice(0, 10) : '',
-        status: record.status
+        user_id: record.user_id,
+        user_type: record.user_type,
+        date: record.date?.slice(0, 10),
+        status: record.status,
       });
     } else {
-      setForm({ userId: '', userType: 'Student', date: '', status: 'Present' });
+      setForm({ user_id: '', user_type: 'Student', date: '', status: 'Present' });
     }
     setOpenDialog(true);
   };
+
   const handleCloseDialog = () => setOpenDialog(false);
 
-  // Handle form change
   const handleFormChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  // Add or update attendance
   const handleSubmit = async () => {
-    if (!form.userId || !form.userType || !form.date || !form.status) {
+    if (!form.user_id || !form.user_type || !form.date || !form.status) {
       enqueueSnackbar('Please fill all fields', { variant: 'warning' });
       return;
     }
+
     try {
       if (editRecord) {
-        await updateAttendance(editRecord._id, {
-          userId: form.userId,
-          userType: form.userType,
-          date: form.date,
-          status: form.status
-        });
+        const { error } = await supabase
+          .from('attendance')
+          .update(form)
+          .eq('id', editRecord.id);
+
+        if (error) throw error;
         enqueueSnackbar('Attendance updated', { variant: 'success' });
       } else {
-        await addAttendance(form);
+        const { error } = await supabase
+          .from('attendance')
+          .insert([form]);
+
+        if (error) throw error;
         enqueueSnackbar('Attendance added', { variant: 'success' });
       }
-      fetchData();
+
+      fetchAttendance();
       handleCloseDialog();
     } catch (err) {
       enqueueSnackbar('Error saving attendance', { variant: 'error' });
     }
   };
 
-  // Delete attendance
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this record?')) return;
-    try {
-      await deleteAttendance(id);
-      enqueueSnackbar('Attendance deleted', { variant: 'success' });
-      fetchData();
-    } catch (err) {
+
+    const { error } = await supabase.from('attendance').delete().eq('id', id);
+    if (error) {
       enqueueSnackbar('Error deleting attendance', { variant: 'error' });
+    } else {
+      enqueueSnackbar('Attendance deleted', { variant: 'success' });
+      fetchAttendance();
     }
   };
 
-  // Admin: filter controls
   const renderFilters = () => (
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={2}>
       <FormControl sx={{ minWidth: 120 }} size="small">
@@ -155,7 +126,7 @@ function Attendance() {
           label="User Type"
           name="userType"
           value={filter.userType}
-          onChange={e => setFilter({ ...filter, userType: e.target.value })}
+          onChange={(e) => setFilter({ ...filter, userType: e.target.value })}
         >
           <MenuItem value="">All</MenuItem>
           {userTypeOptions.map((ut) => (
@@ -169,13 +140,13 @@ function Attendance() {
           label="User"
           name="userId"
           value={filter.userId}
-          onChange={e => setFilter({ ...filter, userId: e.target.value })}
+          onChange={(e) => setFilter({ ...filter, userId: e.target.value })}
         >
           <MenuItem value="">All</MenuItem>
           {users
             .filter(u => !filter.userType || u.role === filter.userType)
             .map(u => (
-              <MenuItem key={u._id} value={u._id}>{u.name} ({u.role})</MenuItem>
+              <MenuItem key={u.id} value={u.id}>{u.name} ({u.role})</MenuItem>
             ))}
         </Select>
       </FormControl>
@@ -184,54 +155,59 @@ function Attendance() {
         type="date"
         size="small"
         value={filter.date}
-        onChange={e => setFilter({ ...filter, date: e.target.value })}
+        onChange={(e) => setFilter({ ...filter, date: e.target.value })}
         InputLabelProps={{ shrink: true }}
       />
     </Stack>
   );
 
+  const filteredData = attendanceData.filter((rec) => {
+    if (user.role !== 'Admin' && user.role !== 'SuperAdmin') {
+      return rec.user_id?.id === user.id;
+    }
+    if (filter.userType && rec.user_type !== filter.userType) return false;
+    if (filter.userId && rec.user_id?.id !== filter.userId) return false;
+    if (filter.date && rec.date?.slice(0, 10) !== filter.date) return false;
+    return true;
+  });
+
   return (
     <Box sx={{ minHeight: '100vh', padding: { xs: 2, sm: 4 } }}>
       <Stack direction="row" justifyContent="space-between" mb={4}>
-        <Typography variant="h4" color="primary">
-          Attendance
-        </Typography>
-        {user.role === 'Admin' && (
+        <Typography variant="h4" color="primary">Attendance</Typography>
+        {(user.role === 'Admin' || user.role === 'SuperAdmin') && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
             Add Attendance
           </Button>
         )}
       </Stack>
 
-      {user.role === 'Admin' && renderFilters()}
+      {(user.role === 'Admin' || user.role === 'SuperAdmin') && renderFilters()}
 
-      <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 3, width: '100%', overflowX: 'auto', backgroundColor: '#fff' }}>
-        <Table sx={{ minWidth: 700 }}>
+      <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 3, overflowX: 'auto' }}>
+        <Table>
           <TableHead>
             <TableRow>
               <TableCell><strong>User</strong></TableCell>
               <TableCell><strong>User Type</strong></TableCell>
               <TableCell><strong>Date</strong></TableCell>
               <TableCell align="center"><strong>Status</strong></TableCell>
-              {user.role === 'Admin' && <TableCell align="center"><strong>Actions</strong></TableCell>}
+              {(user.role === 'Admin' || user.role === 'SuperAdmin') && <TableCell align="center"><strong>Actions</strong></TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredData.map((rec) => (
-              <TableRow key={rec._id}>
-                <TableCell>{rec.userId?.name || '-'}</TableCell>
-                <TableCell>{rec.userType}</TableCell>
-                <TableCell>{rec.date ? rec.date.slice(0, 10) : '-'}</TableCell>
+              <TableRow key={rec.id}>
+                <TableCell>{rec.user_id?.name || '-'}</TableCell>
+                <TableCell>{rec.user_type}</TableCell>
+                <TableCell>{rec.date?.slice(0, 10) || '-'}</TableCell>
                 <TableCell align="center">
-                  <Chip
-                    label={rec.status}
-                    color={rec.status === 'Present' ? 'success' : 'default'}
-                  />
+                  <Chip label={rec.status} color={rec.status === 'Present' ? 'success' : 'default'} />
                 </TableCell>
-                {user.role === 'Admin' && (
+                {(user.role === 'Admin' || user.role === 'SuperAdmin') && (
                   <TableCell align="center">
                     <IconButton onClick={() => handleOpenDialog(rec)}><EditIcon /></IconButton>
-                    <IconButton color="error" onClick={() => handleDelete(rec._id)}><DeleteIcon /></IconButton>
+                    <IconButton color="error" onClick={() => handleDelete(rec.id)}><DeleteIcon /></IconButton>
                   </TableCell>
                 )}
               </TableRow>
@@ -255,8 +231,8 @@ function Attendance() {
             <InputLabel>User Type</InputLabel>
             <Select
               label="User Type"
-              name="userType"
-              value={form.userType}
+              name="user_type"
+              value={form.user_type}
               onChange={handleFormChange}
             >
               {userTypeOptions.map((ut) => (
@@ -268,13 +244,15 @@ function Attendance() {
             <InputLabel>User</InputLabel>
             <Select
               label="User"
-              name="userId"
-              value={form.userId}
+              name="user_id"
+              value={form.user_id}
               onChange={handleFormChange}
             >
-              {users.filter(u => u.role === form.userType).map(u => (
-                <MenuItem key={u._id} value={u._id}>{u.name} ({u.role})</MenuItem>
-              ))}
+              {users
+                .filter(u => u.role === form.user_type)
+                .map(u => (
+                  <MenuItem key={u.id} value={u.id}>{u.name} ({u.role})</MenuItem>
+                ))}
             </Select>
           </FormControl>
           <TextField

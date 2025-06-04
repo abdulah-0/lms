@@ -1,13 +1,21 @@
+// src/pages/Register.jsx
 import React, { useState } from 'react';
 import { Box, Typography, TextField, Button, Paper, Stack, MenuItem } from '@mui/material';
 import { useSnackbar } from 'notistack';
-import { registerPublicUser } from '../api';
+import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
 const roles = ['Student', 'Teacher'];
 
 export default function Register() {
-  const [form, setForm] = useState({ name: '', email: '', password: '', pendingRole: 'Student', rollNo: '', department: '' });
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    pendingRole: 'Student',
+    rollNo: '',
+    department: '',
+  });
   const [loading, setLoading] = useState(false);
   const { enqueueSnackbar } = useSnackbar();
   const navigate = useNavigate();
@@ -19,12 +27,36 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+
     try {
-      await registerPublicUser(form);
+      // Step 1: Register auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+      });
+
+      if (authError) throw authError;
+
+      // Step 2: Insert user profile (manually into users table)
+      const { error: insertError } = await supabase.from('users').insert([
+        {
+          id: authData.user.id, // Use same ID as Supabase Auth user
+          name: form.name,
+          email: form.email,
+          role: null, // Will be approved later
+          approved: false,
+          pendingRole: form.pendingRole,
+          roll_no: form.pendingRole === 'Student' ? form.rollNo : null,
+          department: form.pendingRole === 'Teacher' ? form.department : null,
+        },
+      ]);
+
+      if (insertError) throw insertError;
+
       enqueueSnackbar('Registration successful! Awaiting approval.', { variant: 'success' });
       navigate('/login');
     } catch (err) {
-      enqueueSnackbar(err.response?.data?.message || 'Registration failed', { variant: 'error' });
+      enqueueSnackbar(err.message || 'Registration failed', { variant: 'error' });
     } finally {
       setLoading(false);
     }
@@ -56,4 +88,4 @@ export default function Register() {
       </Paper>
     </Box>
   );
-} 
+}

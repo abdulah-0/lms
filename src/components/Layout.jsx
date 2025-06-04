@@ -1,17 +1,8 @@
 // src/components/Layout.jsx
 import React, { useState } from 'react';
 import {
-  Box,
-  AppBar,
-  Toolbar,
-  IconButton,
-  Typography,
-  Drawer,
-  Divider,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemText
+  Box, AppBar, Toolbar, IconButton, Typography, Drawer, Divider, List,
+  ListItem, ListItemButton, ListItemText
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
@@ -26,6 +17,13 @@ const navLinks = {
     { to: '/marks', label: 'Marks' },
     { to: '/studymaterials', label: 'Study Materials' },
     { to: '/fees', label: 'Fees' },
+  ],
+  Teacher: [
+    { to: '/dashboard', label: 'Home' },
+    { to: '/attendance', label: 'Attendance' },
+    { to: '/marks', label: 'Marks' },
+    { to: '/studymaterials', label: 'Study Materials' },
+    { to: '/salaries', label: 'Salaries' },
   ],
   Admin: [
     { to: '/dashboard', label: 'Home' },
@@ -42,14 +40,7 @@ const navLinks = {
     { to: '/studymaterials', label: 'Study Materials Management' },
     { to: '/users', label: 'User Management' },
     { to: '/fees-salaries', label: 'Fees/Salaries Management' },
-  ],
-  Teacher: [
-    { to: '/dashboard', label: 'Home' },
-    { to: '/attendance', label: 'Attendance' },
-    { to: '/marks', label: 'Marks' },
-    { to: '/studymaterials', label: 'Study Materials' },
-    { to: '/salaries', label: 'Salaries' },
-  ],
+  ]
 };
 
 export default function Layout() {
@@ -59,8 +50,8 @@ export default function Layout() {
   const { user, logout } = useAuth();
 
   const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
@@ -94,18 +85,13 @@ export default function Layout() {
 
   return (
     <Box sx={{ display: 'flex' }}>
-      {/* Mobile AppBar with hamburger */}
+      {/* AppBar for small screens */}
       <AppBar
         position="fixed"
         sx={{ zIndex: (theme) => theme.zIndex.drawer + 1, display: { sm: 'none' } }}
       >
         <Toolbar>
-          <IconButton
-            color="inherit"
-            edge="start"
-            onClick={handleDrawerToggle}
-            sx={{ mr: 2 }}
-          >
+          <IconButton color="inherit" edge="start" onClick={handleDrawerToggle} sx={{ mr: 2 }}>
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap>
@@ -114,9 +100,9 @@ export default function Layout() {
         </Toolbar>
       </AppBar>
 
-      {/* Sidebar drawers */}
+      {/* Sidebar drawer */}
       <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>
-        {/* temporary drawer for mobile */}
+        {/* Temporary drawer on mobile */}
         <Drawer
           variant="temporary"
           open={mobileOpen}
@@ -130,7 +116,7 @@ export default function Layout() {
           {drawer}
         </Drawer>
 
-        {/* permanent drawer for desktop */}
+        {/* Permanent drawer on desktop */}
         <Drawer
           variant="permanent"
           open
